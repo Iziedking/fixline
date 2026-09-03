@@ -22,3 +22,5 @@ dist/
 Thumbs.db
 .idea/
 .vscode/
+
+.vercel
