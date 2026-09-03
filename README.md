@@ -1,36 +1,34 @@
 # Fixline
 
-**The tool surface is the safety model.**
+Fixline is a repair evidence desk that belongs to the renter, not the landlord.
 
-Fixline is a renter-owned repair evidence desk. A browser agent works the case alongside the renter through WebMCP tools — but Fixline does not hand the agent a fixed menu. It registers exactly the tools the current case state allows and withdraws the rest, so a capability the record is not ready for cannot be called, cannot be seen, and cannot be argued past.
+A browser agent works the case with you through WebMCP tools. Fixline does not give it a fixed menu. It registers the tools the current case state allows and withdraws the rest, so the agent cannot see or call a capability the record is not ready for.
 
-There is no tool that approves anything. The agent can only ask.
+No tool approves anything. The agent can only ask you.
 
-## The idea
+## How the tool surface moves
 
-Most agent integrations enforce boundaries with a refusal: the agent calls `send_email`, the server says no. That is a string, and a judge cannot tell it apart from a hardcoded `return "denied"`.
+`compose_request` is not registered until all four proof checks pass. `export_packet` does not exist until you have approved. While a decision sits with you, every write tool is withdrawn, so the record cannot change under the person being asked to sign it.
 
-Fixline enforces boundaries with registration. `compose_request` does not exist until every proof check passes. `export_packet` does not exist until a human has approved. `request_human_approval` blocks on a real person and returns their actual decision to the waiting agent.
-
-Watch the surface move as the case progresses:
+The proof script measures this:
 
 | Case state | Tools registered |
 | --- | ---: |
 | Fresh case, proof checks open | 4 |
 | Record complete | 5 |
 | Draft composed | 6 |
-| **Waiting on the renter's decision** | **2** |
-| Renter approved | 3 |
+| Waiting on your decision | 2 |
+| You approved | 3 |
 
-When the agent asks for a decision, every write tool is withdrawn. The record cannot shift under the person who is being asked to sign off on it.
+## Why this needs WebMCP
 
-## Why WebMCP
+A server-side MCP endpoint can refuse a call. It cannot make a capability disappear from the agent's view the moment page state changes, and it cannot park a tool call on a button you are looking at.
 
-This only works in the page. A server-side MCP endpoint can refuse a call, but it cannot make a capability disappear from the agent's view at the moment the page state changes, and it cannot park a tool call on a button a human is looking at. `document.modelContext.registerTool()` with an `AbortSignal` gives the page authority over what the agent is even able to attempt, and it keeps the renter's case entirely on the renter's machine.
+`document.modelContext.registerTool()` with an `AbortSignal` lets the page decide what the agent is able to attempt at all. The case also stays on your machine, which matters when the contents are photos of your apartment and texts to your landlord.
 
 ## The tools
 
-Registered on `document.modelContext` when available. Availability is computed by the state machine in `src/core.mjs`, not hardcoded here.
+Registered on `document.modelContext` when the browser exposes it. `toolAvailability()` in `src/core.mjs` decides what is live; the browser layer only reconciles against it.
 
 | Tool | Registered when |
 | --- | --- |
@@ -38,73 +36,79 @@ Registered on `document.modelContext` when available. Availability is computed b
 | `get_evidence_item` | Evidence records exist. |
 | `capture_fact` | The case is open and no decision is pending. |
 | `set_urgency` | The case is open and no decision is pending. |
-| `compose_request` | **Every proof check passes.** |
-| `request_human_approval` | A draft exists and no decision is pending. **Blocks until the renter clicks.** |
-| `export_packet` | **The renter approved.** |
+| `compose_request` | Every proof check passes. |
+| `request_human_approval` | A draft exists and no decision is pending. Blocks until you click. |
+| `export_packet` | You approved. |
 
 ## The approval handshake
 
-`request_human_approval` is the only tool that does not return immediately:
+`request_human_approval` is the one tool that does not return right away.
 
-1. The agent calls it with a short note explaining what it changed.
-2. A decision card appears in the page and follows the renter across every route.
-3. The tool call parks. The agent is waiting on a person.
-4. The renter presses Approve or Decline.
-5. Their decision returns to the agent as the tool result, and the surface re-registers.
+1. The agent calls it with a short note saying what it changed.
+2. A decision card appears in the page and follows you across every route.
+3. The tool call parks. The agent is now waiting on a person.
+4. You press Approve or Decline.
+5. Your decision goes back to the agent as the tool result, and the surface re-registers.
 
-A decline is a real outcome: the draft stays unapproved, export stays unregistered, and the record reopens for edits. If nobody answers within three minutes the call resolves as `no_response` rather than hanging forever, and if the agent aborts the call the pending decision is withdrawn.
+Declining does something real. The draft stays unapproved, export stays unregistered, and the record reopens for edits. If nobody answers in three minutes the call resolves as `no_response` instead of hanging, and if the agent aborts the call the pending decision is withdrawn.
 
 ## Run it
 
-Requires Node.js 22 or newer. No dependencies.
+Node.js 22 or newer. No dependencies.
 
 ```bash
 npm run proof   # deterministic proof of the state machine
 npm run serve   # static server on http://127.0.0.1:4173
 ```
 
-Open `http://127.0.0.1:4173` in Chrome with WebMCP enabled, or in the ChatGPT in-app browser. Do not open `index.html` directly — Chrome blocks module scripts on `file://`.
+Open `http://127.0.0.1:4173` in Chrome with WebMCP enabled, or in the ChatGPT in-app browser. Opening `index.html` directly will not work, because Chrome blocks module scripts on `file://`.
 
-To watch the surface change, open DevTools and run `document.modelContext.getTools()` before and after each step. `window.fixline.availableTools()` reports the same list.
+To watch the surface change, run `document.modelContext.getTools()` in DevTools before and after each step. `window.fixline.availableTools()` returns the same list.
 
-Without WebMCP the page labels itself **Preview mode** and runs the identical handlers behind visible buttons, gated by the identical rules. The **Run the agent path** button on `/activity` replays the full sequence including both gate hits.
+If the browser has no WebMCP, the page labels itself Preview mode and runs the same handlers behind visible buttons under the same gates. The "Run the agent path" button on `/activity` replays the whole sequence, including both gate hits.
 
 ## Proof
 
-`npm run proof` replays the real core against `fixtures/repair-case.json` and asserts the claims this README makes:
+`npm run proof` replays the core against `fixtures/repair-case.json` and asserts the claims above:
 
 - the opening surface withholds drafting, approval, and export
 - composing an incomplete record is gated, and the gate names the missing check
-- completing the record registers drafting; drafting alone does not register export
-- **no approval tool is ever exposed to the agent**
+- completing the record registers drafting, while drafting alone does not register export
+- no approval tool is ever exposed to the agent
 - asking for a decision freezes every write tool
 - declining leaves the draft unapproved and reopens the record
-- only the human decision approves, and only then does `export_packet` exist
+- only your decision approves, and only then does `export_packet` exist
 - every evidence id cited in the draft resolves to a real record
 
-Output includes a SHA-256 digest over the full step and surface trace.
+The output carries a SHA-256 digest over the full step and surface trace.
 
 ## Routes
 
-- `/case` — build the dated repair record
-- `/evidence` — inspect source records and the facts they support
-- `/draft` — read the request and make the call
-- `/activity` — the live tool surface and every action receipt
+- `/case` builds the dated repair record
+- `/evidence` shows source records and the facts they support
+- `/draft` is where you read the request and decide
+- `/activity` shows the live tool surface and every action receipt
 
 ## Architecture
 
-`src/core.mjs` is a pure state machine with no DOM or network dependency; `toolAvailability()` is the single source of truth for what may be called. `src/app.mjs` is the only browser layer — it renders the desk and reconciles the registered WebMCP surface against the core on every state change. `scripts/proof.mjs` is a second consumer of the same core.
+`src/core.mjs` is a pure state machine with no DOM or network dependency. `toolAvailability()` there is the only place that decides what may be called.
 
-Static site, no runtime dependencies, no build step. Deploys to any static host.
+`src/app.mjs` is the only browser layer. It renders the desk and reconciles the registered WebMCP surface against the core after every state change.
 
-## Truthful limits
+`scripts/proof.mjs` is a second consumer of the same core, which is why the proof can assert the browser's behavior without a browser.
 
-- The case is fixture-seeded sample data and persists only in this browser's `localStorage`. No server, account, or database exists.
-- No photo bytes are uploaded or analyzed; evidence records are metadata.
-- The draft is not legal advice and does not establish that any user-entered fact is true.
-- No diagnosis or emergency triage is provided.
-- **No outbound communication exists.** Approval produces a local, timestamped packet. Nothing is sent to a landlord.
+Static site, no build step, no runtime dependencies. It deploys to any static host.
+
+## What this does not do
+
+- The case is fixture-seeded sample data kept in this browser's `localStorage`. There is no server, account, or database.
+- No photo bytes are uploaded or analyzed. Evidence records are metadata.
+- The draft is not legal advice and does not establish that anything you entered is true.
+- There is no diagnosis and no emergency triage.
+- Nothing is sent to anyone. Approving produces a local timestamped packet and that is all.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. Copyright (c) 2026 Fixline contributors. The full text is in [LICENSE](LICENSE).
+
+You can use, copy, modify, and distribute this, including commercially, as long as the copyright notice and permission notice stay with it. It comes with no warranty.
