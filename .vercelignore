@@ -1,0 +1,16 @@
+# Local dev server only. Leaving it in makes Vercel treat this as a Node
+# project and run it, which 404s every static asset.
+server.mjs
+start-fixline.cmd
+scripts/
+
+# Internal planning docs
+PLAN.md
+HACKATHON_RESEARCH.md
+UI_BRIEF.md
+BRAND.md
+RUNBOOK.md
+todo.md
+CLAUDE.md
+
+node_modules/
