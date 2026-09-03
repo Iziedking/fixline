@@ -1,5 +1,6 @@
 import {
   approveByHuman,
+  attachEvidence,
   availableToolNames,
   createCase,
   dispatchTool,
@@ -60,6 +61,23 @@ const TOOL_DEFS = [
     annotations: { readOnlyHint: false, untrustedContentHint: true }
   },
   {
+    name: "attach_evidence",
+    title: "Link a source record",
+    summary: "Point a source at the facts it backs up.",
+    description: "Add a source record (photo, message, receipt, or note) and link it to the ids of the facts it supports. A source that points at nothing is rejected, and so is an unknown fact id. You can describe a source the renter tells you about, but you cannot add image bytes: only the renter's own file picker does that.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        label: { type: "string", description: "Short name for the record, such as Ceiling stain photo." },
+        kind: { type: "string", enum: ["photo", "message", "receipt", "note"] },
+        capturedOn: { type: "string", description: "Date the source was captured, YYYY-MM-DD." },
+        factIds: { type: "array", items: { type: "string" }, description: "Ids of the facts this source supports, such as fact-1. At least one, and each must already exist." }
+      },
+      required: ["label", "kind", "capturedOn", "factIds"]
+    },
+    annotations: { readOnlyHint: false, untrustedContentHint: true }
+  },
+  {
     name: "set_urgency",
     title: "Set case urgency",
     summary: "Set routine, soon, or urgent.",
@@ -106,6 +124,7 @@ let webMcpLive = false;
 let lastNotice = null;
 let selectedEvidenceId = null;
 let showNewCase = false;
+let showAddEvidence = false;
 let toolActivity = [];
 let pendingResolver = null;
 let pendingTimer = null;
@@ -134,6 +153,53 @@ function restore() {
     parsed.pendingApproval = null;
     return parsed;
   } catch { return null; }
+}
+
+/* ---------- local image store ---------- */
+
+/**
+ * Image bytes live beside the case rather than inside it, so the pure core
+ * stays free of them and a render does not clone a megabyte of base64. They are
+ * downscaled in the browser and never leave it.
+ */
+const IMAGE_KEY = "fixline.images.v1";
+let imageStore = {};
+
+function persistImages() {
+  try {
+    window.localStorage.setItem(IMAGE_KEY, JSON.stringify(imageStore));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function restoreImages() {
+  try {
+    const raw = window.localStorage.getItem(IMAGE_KEY);
+    imageStore = raw ? JSON.parse(raw) : {};
+  } catch {
+    imageStore = {};
+  }
+}
+
+/** Shrinks a picked photo to something a browser can hold without complaint. */
+async function downscaleImage(file, maxEdge = 900, quality = 0.72) {
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+  bitmap.close?.();
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
+function clearImages() {
+  imageStore = {};
+  persistImages();
 }
 
 /* ---------- routing ---------- */
@@ -222,8 +288,12 @@ function homeView(view) {
 function routeHeader(eyebrow, title, copy, action = "") { return `<section class="route-header"><div><p class="kicker">${eyebrow}</p><h1>${title}</h1><p class="lede">${copy}</p></div>${action ? `<div class="route-header-action">${action}</div>` : ""}</section>`; }
 
 function caseView(view) {
-  const locked = view.draft?.status === "approved";
-  return `<div class="page-shell route-shell">${routeHeader(`CASE / ${escapeHtml(view.id)}`, "Add what happened.", "Record the details while they are fresh. Dates and source links stay beside each fact.", `<button class="button ghost" data-action="toggle-new-case">${showNewCase ? "Cancel" : "Start a new case"}</button>`)}${newCaseForm()}<div class="content-grid"><article class="record-panel" aria-labelledby="case-heading"><div class="panel-top"><div><span class="eyebrow dark-eyebrow">Active case</span><h2 id="case-heading">${escapeHtml(view.title)}</h2><p class="case-meta">${escapeHtml(view.location)} <span>•</span> started ${escapeHtml(view.startedOn)}</p></div><span class="status ${statusClass(view.urgency)}">${escapeHtml(view.urgency)}</span></div><div class="panel-section"><div class="section-label"><span>Repair facts</span><span class="mono">${view.facts.length} FACTS</span></div><ol class="timeline" aria-label="Repair facts">${view.facts.length ? view.facts.map((fact) => `<li class="timeline-item"><span class="timeline-marker" aria-hidden="true"></span><div><p class="fact-label">${escapeHtml(fact.label)}</p><p class="fact-text">${escapeHtml(fact.text)}</p><time class="fact-date" datetime="${escapeHtml(fact.occurredOn)}">${escapeHtml(fact.occurredOn)} · ${escapeHtml(fact.source)}</time>${factEvidence(view.evidence, fact.id)}</div></li>`).join("") : `<li class="empty-state">No repair facts yet. Add the first one below.</li>`}</ol></div>${locked ? `<div class="panel-section"><div class="empty-state">This record is locked. You approved the packet, so the facts behind it can no longer change.</div></div>` : `<form class="capture-form panel-section" data-form="capture"><div class="section-label"><span>Add a fact</span><span class="mono">YOUR ENTRY</span></div><div class="form-row"><div class="field"><label for="fact-label">Fact type</label><select id="fact-label" name="label"><option>Entry preference</option><option>Update</option><option>Issue</option><option>Location</option><option>First contact</option></select></div><div class="field"><label for="fact-date">Date</label><input id="fact-date" name="occurredOn" type="date" value="2026-08-24" required /></div></div><div class="field"><label for="fact-text">What changed?</label><textarea id="fact-text" name="text" placeholder="Example: Please coordinate entry after 5 p.m. on weekdays." required></textarea></div><button class="button dark-button" type="submit">Add to record <span>→</span></button></form>`}</article>${caseRail(view)}</div></div>`;
+  const approved = view.draft?.status === "approved";
+  const frozen = approved || Boolean(view.pendingApproval);
+  const frozenNote = approved
+    ? "This record is locked. You approved the packet, so the facts behind it can no longer change."
+    : "The record is frozen while you decide. Approve or decline the request at the top of the page, and the case reopens either way.";
+  return `<div class="page-shell route-shell">${routeHeader(`CASE / ${escapeHtml(view.id)}`, "Add what happened.", "Record the details while they are fresh. Dates and source links stay beside each fact.", `<button class="button ghost" data-action="toggle-new-case">${showNewCase ? "Cancel" : "Start a new case"}</button>`)}${newCaseForm()}<div class="content-grid"><article class="record-panel" aria-labelledby="case-heading"><div class="panel-top"><div><span class="eyebrow dark-eyebrow">Active case</span><h2 id="case-heading">${escapeHtml(view.title)}</h2><p class="case-meta">${escapeHtml(view.location)} <span>•</span> started ${escapeHtml(view.startedOn)}</p></div><span class="status ${statusClass(view.urgency)}">${escapeHtml(view.urgency)}</span></div><div class="panel-section"><div class="section-label"><span>Repair facts</span><span class="mono">${view.facts.length} FACTS</span></div><ol class="timeline" aria-label="Repair facts">${view.facts.length ? view.facts.map((fact) => `<li class="timeline-item"><span class="timeline-marker" aria-hidden="true"></span><div><p class="fact-label">${escapeHtml(fact.label)}</p><p class="fact-text">${escapeHtml(fact.text)}</p><time class="fact-date" datetime="${escapeHtml(fact.occurredOn)}">${escapeHtml(fact.occurredOn)} · ${escapeHtml(fact.source)}</time>${factEvidence(view.evidence, fact.id)}</div></li>`).join("") : `<li class="empty-state">No repair facts yet. Add the first one below.</li>`}</ol></div>${frozen ? `<div class="panel-section"><div class="empty-state">${escapeHtml(frozenNote)}</div></div>` : `<form class="capture-form panel-section" data-form="capture"><div class="section-label"><span>Add a fact</span><span class="mono">YOUR ENTRY</span></div><div class="form-row"><div class="field"><label for="fact-label">Fact type</label><select id="fact-label" name="label"><option>Entry preference</option><option>Update</option><option>Issue</option><option>Location</option><option>First contact</option></select></div><div class="field"><label for="fact-date">Date</label><input id="fact-date" name="occurredOn" type="date" value="2026-08-24" required /></div></div><div class="field"><label for="fact-text">What changed?</label><textarea id="fact-text" name="text" placeholder="Example: Please coordinate entry after 5 p.m. on weekdays." required></textarea></div><button class="button dark-button" type="submit">Add to record <span>→</span></button></form>`}</article>${caseRail(view)}</div></div>`;
 }
 
 /**
@@ -252,10 +322,76 @@ function newCaseForm() {
 
 function caseRail(view) { return `<aside class="support-rail dark-surface"><div class="rail-top"><span class="eyebrow">Case status</span><span class="mono">LOCAL</span></div><div class="rail-number">${view.readiness.complete}<span>/${view.readiness.total}</span></div><p class="rail-title">${escapeHtml(view.readiness.label)}</p><ul class="mini-checks">${view.readiness.checks.map((check) => `<li class="${check.complete ? "complete" : ""}"><span>${check.complete ? "✓" : "·"}</span>${escapeHtml(check.label)}</li>`).join("")}</ul><div class="rail-divider"></div><p class="rail-label">What this unlocks</p><p class="rail-copy">${view.readiness.ready ? "Every check passed, so the drafting tool is now registered for the agent." : "Until every check passes, the drafting tool is not registered and no agent can call it."}</p>${routeLink("/activity", "See the tool surface →", "rail-link")}</aside>`; }
 
+/** Renders a real thumbnail when the renter attached one, a kind glyph otherwise. */
+function evidenceThumb(item) {
+  const src = imageStore[item.id];
+  return src
+    ? `<img class="evidence-thumb" src="${src}" alt="${escapeHtml(item.label)}" loading="lazy" />`
+    : `<span class="evidence-thumb placeholder" aria-hidden="true">${escapeHtml(item.kind.slice(0, 1).toUpperCase())}</span>`;
+}
+
+/**
+ * A source that points at nothing proves nothing, so the form makes you pick
+ * the facts it supports. With no facts yet there is nothing to point at, and
+ * the tool is not registered either.
+ */
+function addEvidenceForm(view) {
+  if (!showAddEvidence) return "";
+  if (view.facts.length > 0 && !view.availableTools.includes("attach_evidence")) {
+    return `<section class="record-panel new-case-panel">
+      <div class="section-label"><span>Add a source record</span><span class="mono">NOT RIGHT NOW</span></div>
+      <p class="new-case-note">${escapeHtml(toolAvailability(currentCase).attach_evidence.reason)}</p>
+    </section>`;
+  }
+  if (view.facts.length === 0) {
+    return `<section class="record-panel new-case-panel">
+      <div class="section-label"><span>Add a source record</span><span class="mono">NOTHING TO LINK</span></div>
+      <p class="new-case-note">A source has to back up something. Add your first fact on the case page, then come back and link a photo or message to it.</p>
+      ${routeLink("/case", "Go to the case \u2192", "button dark-button")}
+    </section>`;
+  }
+  return `<section class="record-panel new-case-panel" aria-labelledby="add-evidence-heading">
+    <div class="section-label"><span id="add-evidence-heading">Add a source record</span><span class="mono">STAYS ON THIS DEVICE</span></div>
+    <p class="new-case-note">Pick a photo from this device if you have one. It is shrunk in your browser and saved here. It is never uploaded, and an agent cannot add one.</p>
+    <form data-form="add-evidence">
+      <div class="field"><label for="evidence-file">Photo (optional)</label><input id="evidence-file" name="file" type="file" accept="image/*" /></div>
+      <div class="form-row">
+        <div class="field"><label for="evidence-label">Name this record</label><input id="evidence-label" name="label" placeholder="Ceiling stain photo" required /></div>
+        <div class="field"><label for="evidence-date">Captured on</label><input id="evidence-date" name="capturedOn" type="date" value="${escapeHtml(view.startedOn)}" required /></div>
+      </div>
+      <div class="field"><label for="evidence-kind">Kind</label><select id="evidence-kind" name="kind"><option value="photo">photo</option><option value="message">message</option><option value="receipt">receipt</option><option value="note">note</option></select></div>
+      <fieldset class="fact-picker"><legend>Which facts does this back up?</legend>${view.facts.map((fact) => `<label class="fact-check"><input type="checkbox" name="factIds" value="${escapeHtml(fact.id)}" /><span><strong>${escapeHtml(fact.label)}</strong>${escapeHtml(fact.text.slice(0, 72))}${fact.text.length > 72 ? "\u2026" : ""}</span></label>`).join("")}</fieldset>
+      <div class="form-actions"><button class="button dark-button" type="submit">Link the source <span>&rarr;</span></button></div>
+    </form>
+  </section>`;
+}
+
 function evidenceView(view) {
   const evidence = view.evidence;
   const selected = evidence.find((item) => item.id === selectedEvidenceId) || evidence[0];
-  return `<div class="page-shell route-shell">${routeHeader("EVIDENCE / 02", "Check the source records.", "Open a record to see when it was captured and which facts it supports. The request only uses links that exist in the case.", routeLink("/draft", "Open the draft →", "button ghost"))}<div class="evidence-layout"><section class="evidence-list-panel" aria-labelledby="evidence-list-heading"><div class="section-label"><span id="evidence-list-heading">Source records</span><span class="mono">${evidence.length} RECORDS</span></div><div class="evidence-list">${evidence.map((item) => `<button class="evidence-list-item ${selected?.id === item.id ? "selected" : ""}" data-action="select-evidence" data-evidence-id="${escapeHtml(item.id)}"><span class="evidence-kind">${escapeHtml(item.kind)}</span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.capturedOn)}</small><span class="list-arrow">→</span></button>`).join("")}</div><div class="list-footnote">These records come from the local sample case.</div></section><section class="evidence-detail dark-surface" aria-labelledby="evidence-detail-heading">${selected ? `<div class="rail-top"><span class="eyebrow">Selected record</span><span class="mono">${escapeHtml(selected.id)}</span></div><div class="detail-icon">${escapeHtml(selected.kind.slice(0, 1).toUpperCase())}</div><h2 id="evidence-detail-heading">${escapeHtml(selected.label)}</h2><p class="detail-meta">Captured ${escapeHtml(selected.capturedOn)} <span>•</span> ${escapeHtml(selected.kind)} source</p><div class="detail-block"><p class="rail-label">Facts supported</p><div class="linked-facts">${selected.factIds.map((factId) => { const fact = view.facts.find((entry) => entry.id === factId); return `<span>${escapeHtml(fact?.label || factId)} <small>${escapeHtml(factId)}</small></span>`; }).join("")}</div></div><div class="lookup-block"><p class="rail-label">Look up by ID</p><form data-form="lookup"><div class="lookup-row"><input name="evidenceId" aria-label="Evidence ID" value="${escapeHtml(selected.id)}" /><button class="button lime-button" type="submit">Look up</button></div></form><div class="receipt-region" aria-live="polite">${lastNotice ? noticeHtml(lastNotice) : ""}</div></div>` : `<p class="empty-state">No evidence records yet.</p>`}</section></div></div>`;
+  const canAdd = view.availableTools.includes("attach_evidence") || view.facts.length === 0;
+  const action = canAdd
+    ? `<button class="button ghost" data-action="toggle-add-evidence">${showAddEvidence ? "Cancel" : "Add a source"}</button>`
+    : routeLink("/draft", "Open the draft \u2192", "button ghost");
+  return `<div class="page-shell route-shell">${routeHeader("EVIDENCE / 02", "Check the source records.", "Every source names the facts it backs up. The request only cites links that exist in this case.", action)}${addEvidenceForm(view)}<div class="evidence-layout">
+    <section class="evidence-list-panel" aria-labelledby="evidence-list-heading">
+      <div class="section-label"><span id="evidence-list-heading">Source records</span><span class="mono">${evidence.length} RECORDS</span></div>
+      <div class="evidence-list">${evidence.length
+        ? evidence.map((item) => `<button class="evidence-list-item ${selected?.id === item.id ? "selected" : ""}" data-action="select-evidence" data-evidence-id="${escapeHtml(item.id)}">${evidenceThumb(item)}<span class="evidence-list-copy"><span class="evidence-kind">${escapeHtml(item.kind)}</span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.capturedOn)} \u00b7 backs ${item.factIds.length} fact${item.factIds.length === 1 ? "" : "s"}</small></span><span class="list-arrow">\u2192</span></button>`).join("")
+        : `<div class="empty-state">No source records yet. Add a photo or a message and link it to a fact.</div>`}</div>
+      <div class="list-footnote">${evidence.length ? "Photos are stored in this browser only." : "The sample case ships with two records. A case you start begins empty."}</div>
+    </section>
+    <section class="evidence-detail dark-surface" aria-labelledby="evidence-detail-heading">${selected ? `
+      <div class="rail-top"><span class="eyebrow">Selected record</span><span class="mono">${escapeHtml(selected.id)}</span></div>
+      ${imageStore[selected.id]
+        ? `<img class="detail-image" src="${imageStore[selected.id]}" alt="${escapeHtml(selected.label)}" />`
+        : `<div class="detail-icon">${escapeHtml(selected.kind.slice(0, 1).toUpperCase())}</div>`}
+      <h2 id="evidence-detail-heading">${escapeHtml(selected.label)}</h2>
+      <p class="detail-meta">Captured ${escapeHtml(selected.capturedOn)} <span>\u2022</span> ${escapeHtml(selected.kind)} source</p>
+      <div class="detail-block"><p class="rail-label">Facts supported</p><div class="linked-facts">${selected.factIds.map((factId) => { const fact = view.facts.find((entry) => entry.id === factId); return `<span>${escapeHtml(fact?.label || factId)} <small>${escapeHtml(factId)}</small></span>`; }).join("")}</div></div>
+      <div class="lookup-block"><p class="rail-label">Look up by ID</p><form data-form="lookup"><div class="lookup-row"><input name="evidenceId" aria-label="Evidence ID" value="${escapeHtml(selected.id)}" /><button class="button lime-button" type="submit">Look up</button></div></form><div class="receipt-region" aria-live="polite">${lastNotice ? noticeHtml(lastNotice) : ""}</div></div>`
+      : `<div class="rail-top"><span class="eyebrow">No record selected</span></div><p class="empty-state">Once you link a source it shows up here with the facts it supports.</p>`}</section>
+  </div></div>`;
 }
 
 function draftView(view) {
@@ -415,11 +551,64 @@ async function initWebMcp() {
 
 /* ---------- human actions ---------- */
 
+/**
+ * The renter's own path for adding a source. This is the only route that can
+ * attach image bytes, which is why it calls the core directly instead of going
+ * through the agent tool.
+ */
+async function addEvidence(formData) {
+  try {
+    const gate = toolAvailability(currentCase).attach_evidence;
+    if (!gate.available) {
+      setNotice({ action: "attach_evidence", result: "refused", at: now(), detail: gate.reason });
+      render();
+      return;
+    }
+    const file = formData.get("file");
+    const factIds = formData.getAll("factIds").filter(Boolean);
+    let dataUrl = null;
+    if (file && typeof file.size === "number" && file.size > 0) {
+      try {
+        dataUrl = await downscaleImage(file);
+      } catch {
+        setNotice({ action: "attach_evidence", result: "error", at: now(), detail: "That file could not be read as an image, so the record was not added." });
+        render();
+        return;
+      }
+    }
+    const next = attachEvidence(currentCase, {
+      label: formData.get("label"),
+      kind: formData.get("kind"),
+      capturedOn: formData.get("capturedOn"),
+      factIds,
+      hasImage: Boolean(dataUrl)
+    }, now());
+    const item = next.evidence[next.evidence.length - 1];
+    let storageNote = "";
+    if (dataUrl) {
+      imageStore[item.id] = dataUrl;
+      if (!persistImages()) storageNote = " The image is held for this session only, because this browser's local storage is full.";
+    }
+    currentCase = next;
+    showAddEvidence = false;
+    selectedEvidenceId = item.id;
+    const receipt = currentCase.receipts[currentCase.receipts.length - 1];
+    setNotice(storageNote ? { ...receipt, detail: receipt.detail + storageNote } : receipt);
+    render();
+    void syncToolSurface();
+  } catch (error) {
+    setNotice({ action: "attach_evidence", result: "error", at: now(), detail: error instanceof Error ? error.message : "The source could not be linked." });
+    render();
+  }
+}
+
 function startNewCase(input) {
   try {
     currentCase = newCase(input, now());
     showNewCase = false;
+    showAddEvidence = false;
     selectedEvidenceId = null;
+    clearImages();
     settleDecision({ decision: "cancelled", message: "The renter started a different case." });
     setNotice(currentCase.receipts[currentCase.receipts.length - 1]);
     render();
@@ -434,7 +623,9 @@ function resetCase() {
   currentCase = createCase(seedCase);
   lastNotice = null;
   showNewCase = false;
+  showAddEvidence = false;
   selectedEvidenceId = null;
+  clearImages();
   settleDecision({ decision: "cancelled", message: "The renter reset the case." });
   render();
   void syncToolSurface();
@@ -498,6 +689,7 @@ function runDemo() {
   runTool("get_case_snapshot");
   runTool("compose_request");
   runTool("capture_fact", { label: "Entry preference", text: "Please coordinate entry after 5 p.m. on weekdays.", occurredOn: "2026-08-24" });
+  runTool("attach_evidence", { label: "Follow-up text thread", kind: "message", capturedOn: "2026-08-24", factIds: ["fact-4"] });
   runTool("set_urgency", { level: "soon" });
   runTool("compose_request");
   runTool("request_human_approval", { note: "I added your entry preference and set urgency to soon. Approve to unlock the export." });
@@ -509,6 +701,8 @@ function bindEvents() {
   document.querySelector("[data-action=reset]")?.addEventListener("click", resetCase);
   document.querySelector("[data-action=toggle-new-case]")?.addEventListener("click", () => { showNewCase = !showNewCase; render(); });
   document.querySelector("[data-action=load-sample]")?.addEventListener("click", () => { showNewCase = false; resetCase(); });
+  document.querySelector("[data-action=toggle-add-evidence]")?.addEventListener("click", () => { showAddEvidence = !showAddEvidence; render(); });
+  document.querySelector("[data-form=add-evidence]")?.addEventListener("submit", (event) => { event.preventDefault(); void addEvidence(new FormData(event.currentTarget)); });
   document.querySelector("[data-form=new-case]")?.addEventListener("submit", (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); startNewCase({ title: form.get("title"), location: form.get("location"), startedOn: form.get("startedOn") }); });
   document.querySelector("[data-action=compose]")?.addEventListener("click", () => runTool("compose_request"));
   document.querySelector("[data-action=approve]")?.addEventListener("click", approveHuman);
@@ -527,6 +721,7 @@ async function init() {
     const response = await fetch("fixtures/repair-case.json", { cache: "no-store" });
     if (!response.ok) throw new Error("Sample case could not be loaded.");
     seedCase = await response.json();
+    restoreImages();
     currentCase = restore() || createCase(seedCase);
     render();
     await initWebMcp();

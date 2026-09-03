@@ -53,6 +53,29 @@ assert(!blankTools.includes("get_evidence_item"), "no evidence tool without evid
 assert(!blankTools.includes("compose_request"), "an empty record cannot be drafted");
 surfaces.push({ label: "new empty case", tools: blankTools });
 
+/* 0b. A source has to point at a fact, so it cannot be linked to an empty record. */
+const blankAttach = attempt(blank, "attach_evidence", { label: "Photo", kind: "photo", capturedOn: "2026-09-01", factIds: [] }, at(0));
+assert(!blankAttach.allowed && blankAttach.gated, "linking a source to a factless case is gated");
+
+const seeded = dispatchTool(blank, "capture_fact", { label: "Issue", text: "The radiator stays cold on full.", occurredOn: "2026-09-01" }, at(1)).caseData;
+const withFact = availableToolNames(seeded);
+assert(withFact.includes("attach_evidence"), "one fact unlocks linking a source");
+assert(!withFact.includes("get_evidence_item"), "there is still nothing to read back");
+surfaces.push({ label: "one fact, no source", tools: withFact });
+
+const badLink = attempt(seeded, "attach_evidence", { label: "Photo", kind: "photo", capturedOn: "2026-09-01", factIds: ["fact-99"] }, at(2));
+assert(!badLink.allowed && badLink.message.includes("fact-99"), "an unknown fact id is named and refused");
+
+const emptyLink = attempt(seeded, "attach_evidence", { label: "Photo", kind: "photo", capturedOn: "2026-09-01", factIds: [] }, at(2));
+assert(!emptyLink.allowed && emptyLink.message.includes("at least one fact"), "a source that backs nothing is refused");
+
+const sourced = dispatchTool(seeded, "attach_evidence", { label: "Radiator photo", kind: "photo", capturedOn: "2026-09-01", factIds: ["fact-1"], hasImage: true }, at(2)).caseData;
+assert(sourced.evidence[0].hasImage === false, "the agent tool cannot claim an image it did not add");
+assert(sourced.evidence[0].factIds.includes("fact-1"), "the source records the fact it backs");
+const withSource = availableToolNames(sourced);
+assert(withSource.includes("get_evidence_item"), "a linked source unlocks reading evidence back");
+surfaces.push({ label: "one fact, one source", tools: withSource });
+
 /* 1. The opening surface withholds everything the record is not ready for. */
 const opening = recordSurface("initial");
 assert(opening.includes("get_case_snapshot"), "reading the case is always allowed");

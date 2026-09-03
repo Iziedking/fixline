@@ -1,5 +1,6 @@
 const URGENCY_LEVELS = ["routine", "soon", "urgent"];
 const FACT_LABELS = ["Issue", "Location", "First contact", "Entry preference", "Update"];
+const EVIDENCE_KINDS = ["photo", "message", "receipt", "note"];
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -111,6 +112,16 @@ export function toolAvailability(caseData) {
     capture_fact: {
       available: !approved && !pending,
       reason: approved ? "The record is locked after approval." : pending ? "A decision is with the renter." : "The case is open for new dated facts."
+    },
+    attach_evidence: {
+      available: safeCase.facts.length > 0 && !approved && !pending,
+      reason: approved
+        ? "The record is locked after approval."
+        : pending
+          ? "A decision is with the renter."
+          : safeCase.facts.length > 0
+            ? "There are facts a source record can support."
+            : "Add a fact first. A source record has to point at something."
     },
     set_urgency: {
       available: !approved && !pending,
@@ -230,6 +241,45 @@ export function captureFact(caseData, input, now) {
   return withReceipt(next, makeReceipt("capture_fact", "ok", `${fact.id} added`, now));
 }
 
+/**
+ * Links a source record to the facts it backs up.
+ *
+ * A source that points at nothing proves nothing, so this refuses an empty or
+ * unknown fact list. Image bytes never pass through here: only the renter's own
+ * file picker can set `hasImage`, which keeps the agent able to describe a
+ * source without being able to manufacture one.
+ */
+export function attachEvidence(caseData, input, now) {
+  const safeCase = assertCase(caseData);
+  const label = assertString(input?.label, "label", 80);
+  const kind = assertString(input?.kind, "kind", 12);
+  if (!EVIDENCE_KINDS.includes(kind)) {
+    throw new Error(`kind must be one of: ${EVIDENCE_KINDS.join(", ")}.`);
+  }
+  const capturedOn = assertDate(input?.capturedOn, "capturedOn");
+  const factIds = Array.isArray(input?.factIds) ? input.factIds.filter(Boolean) : [];
+  if (factIds.length === 0) {
+    throw new Error("A source record must support at least one fact. Pass the ids of the facts it backs up.");
+  }
+  const known = new Set(safeCase.facts.map((fact) => fact.id));
+  const unknown = factIds.filter((id) => !known.has(id));
+  if (unknown.length > 0) {
+    throw new Error(`These fact ids are not in this case: ${unknown.join(", ")}.`);
+  }
+  const next = clone(safeCase);
+  const item = {
+    id: `evidence-${next.evidence.length + 1}`,
+    kind,
+    label,
+    capturedOn,
+    factIds: Array.from(new Set(factIds)),
+    hasImage: input?.hasImage === true
+  };
+  next.evidence.push(item);
+  const detail = `${item.id} supports ${item.factIds.join(", ")}${item.hasImage ? " with an image" : ""}`;
+  return withReceipt(next, makeReceipt("attach_evidence", "ok", detail, now));
+}
+
 export function setUrgency(caseData, input, now) {
   const safeCase = assertCase(caseData);
   const level = assertString(input?.level, "level", 12);
@@ -339,6 +389,9 @@ export function dispatchTool(caseData, name, input, now) {
       return { caseData: assertCase(caseData), output: getEvidenceItem(caseData, input) };
     case "capture_fact":
       return { caseData: captureFact(caseData, input, now), output: "Fact captured in the case timeline." };
+    case "attach_evidence":
+      // hasImage is forced off here. Only the renter's file picker adds bytes.
+      return { caseData: attachEvidence(caseData, { ...input, hasImage: false }, now), output: "Source record linked to the facts it supports." };
     case "set_urgency":
       return { caseData: setUrgency(caseData, input, now), output: "Urgency updated in the case." };
     case "compose_request":
@@ -360,4 +413,4 @@ export function stableJson(value) {
   return JSON.stringify(value);
 }
 
-export { URGENCY_LEVELS, FACT_LABELS };
+export { URGENCY_LEVELS, FACT_LABELS, EVIDENCE_KINDS };

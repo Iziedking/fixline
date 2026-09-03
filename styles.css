@@ -299,3 +299,26 @@ h1 span { color: var(--accent); }
 .new-case-panel { margin-bottom: 26px; }
 .new-case-note { margin: 14px 0 20px; max-width: 62ch; color: var(--muted-text); font-size: 13px; line-height: 1.55; }
 .new-case-panel .form-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+
+/* Evidence records carry a real thumbnail once the renter attaches one. */
+.evidence-list-item { grid-template-columns: 46px minmax(0, 1fr) 16px; align-items: center; }
+.evidence-list-copy { display: grid; gap: 3px; min-width: 0; }
+.evidence-list-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.evidence-thumb { display: block; width: 46px; height: 46px; border-radius: 7px; object-fit: cover; background: #e4e8e0; }
+.evidence-thumb.placeholder { display: grid; place-items: center; border: 1px solid #bcc8be; color: #6f8c35; font: 800 14px ui-monospace, monospace; }
+.detail-image { display: block; width: 100%; max-height: 260px; margin: 46px 0 22px; border: 1px solid #46586c; border-radius: 10px; object-fit: cover; }
+
+/* Picking which facts a source backs up. */
+.fact-picker { margin: 20px 0 0; border: 1px solid #cbd5c9; border-radius: 8px; padding: 16px; }
+.fact-picker legend { padding: 0 7px; color: var(--muted-text); font: 800 9px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.fact-check { display: grid; grid-template-columns: 18px 1fr; align-items: start; gap: 10px; padding: 8px 0; color: var(--ink-text); font-size: 13px; line-height: 1.45; cursor: pointer; }
+.fact-check + .fact-check { border-top: 1px solid var(--line-light); }
+.fact-check input { width: 16px; height: 16px; margin-top: 2px; accent-color: #71982b; }
+.fact-check strong { display: block; color: var(--muted-text); font: 800 9px ui-monospace, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.field input[type="file"] { padding: 10px; background: #eef0ea; font-size: 12px; }
+
+@media (max-width: 720px) {
+  .evidence-list-item { grid-template-columns: 40px minmax(0, 1fr); }
+  .evidence-thumb { width: 40px; height: 40px; }
+  .detail-image { margin-top: 30px; }
+}

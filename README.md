@@ -15,9 +15,10 @@ The proof script measures this:
 | Case state | Tools registered |
 | --- | ---: |
 | New empty case you started | 3 |
-| Seeded sample case, proof checks open | 4 |
-| Record complete | 5 |
-| Draft composed | 6 |
+| One fact written down | 4 |
+| First source linked to it | 5 |
+| Record complete | 6 |
+| Draft composed | 7 |
 | Waiting on your decision | 2 |
 | You approved | 3 |
 
@@ -34,12 +35,19 @@ Registered on `document.modelContext` when the browser exposes it. `toolAvailabi
 | Tool | Registered when |
 | --- | --- |
 | `get_case_snapshot` | Always. Returns proof gaps and the currently live tool list. |
-| `get_evidence_item` | Evidence records exist. |
+| `get_evidence_item` | At least one source record has been linked. |
 | `capture_fact` | The case is open and no decision is pending. |
+| `attach_evidence` | At least one fact exists for a source to point at. |
 | `set_urgency` | The case is open and no decision is pending. |
 | `compose_request` | Every proof check passes. |
 | `request_human_approval` | A draft exists and no decision is pending. Blocks until you click. |
 | `export_packet` | You approved. |
+
+## Sources have to point at something
+
+A source record that backs up nothing proves nothing, so `attach_evidence` refuses an empty fact list and names any fact id that is not in the case. That is also why the tool stays unregistered until you have written down at least one fact: on an empty record there is nothing for a photo to be evidence of.
+
+The agent can add a source you describe to it. It cannot add the photo. Image bytes only enter through your own file picker, which downscales the picture in your browser and keeps it in local storage. Nothing is uploaded, and the tool the agent sees has no field for image data at all.
 
 ## The approval handshake
 
@@ -62,7 +70,7 @@ npm run proof   # deterministic proof of the state machine
 npm run serve   # static server on http://127.0.0.1:4173
 ```
 
-The site opens on a seeded sample case. "Start a new case" on `/case` gives you an empty record with your own address and issue, which is the smallest surface Fixline registers: read the case, add a fact, set urgency. Nothing to read, draft, or approve yet.
+The site opens on a seeded sample case. "Start a new case" on `/case` gives you an empty record with your own address and issue, which is the smallest surface Fixline registers: read the case, add a fact, set urgency. Nothing to link, read, draft, or approve yet. Write one fact and a fourth tool appears; link a photo to it and a fifth does.
 
 Open `http://127.0.0.1:4173` in Chrome with WebMCP enabled, or in the ChatGPT in-app browser. Opening `index.html` directly will not work, because Chrome blocks module scripts on `file://`.
 
@@ -75,6 +83,11 @@ If the browser has no WebMCP, the page labels itself Preview mode and runs the s
 `npm run proof` replays the core against `fixtures/repair-case.json` and asserts the claims above:
 
 - an empty case registers three tools, with no evidence read and no drafting
+- a source cannot be linked to a case with no facts, and the gate says why
+- an unknown fact id is named back to the caller and refused
+- a source that backs up nothing is refused
+- the agent tool cannot claim an image it did not add
+- one fact unlocks linking a source, and one source unlocks reading evidence back
 - the seeded case withholds drafting, approval, and export
 - composing an incomplete record is gated, and the gate names the missing check
 - completing the record registers drafting, while drafting alone does not register export
@@ -106,7 +119,7 @@ Static site, no build step, no runtime dependencies. It deploys to any static ho
 ## What this does not do
 
 - Cases live in this browser's `localStorage`, seeded from a sample fixture. There is no server, account, or database, and nothing syncs between devices.
-- No photo bytes are uploaded or analyzed. Evidence records are metadata.
+- Photos stay in this browser. They are downscaled locally, never uploaded, and never analysed.
 - The draft is not legal advice and does not establish that anything you entered is true.
 - There is no diagnosis and no emergency triage.
 - Nothing is sent to anyone. Approving produces a local timestamped packet and that is all.
