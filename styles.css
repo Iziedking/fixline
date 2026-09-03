@@ -195,7 +195,7 @@ h1 span { color: var(--accent); }
 .tool-row p { margin: 5px 0 0; color: var(--text-dim); font-size: 11px; line-height: 1.4; }
 .outline-light { border-color: #607084; color: var(--text); }
 .activity-actions { margin-top: 22px; }
-.tool-panel .small-note { margin-bottom: 0; }
+.tool-panel .small-note { margin: 18px 0 0; }
 .receipt-panel { min-height: 500px; padding: 26px; }
 .receipt-list { display: grid; gap: 0; }
 .receipt-row { display: grid; grid-template-columns: 9px 1fr; gap: 12px; padding: 15px 0; border-top: 1px solid var(--line-light); }
@@ -325,4 +325,18 @@ h1 span { color: var(--accent); }
   .evidence-list-item { grid-template-columns: 40px minmax(0, 1fr); }
   .evidence-thumb { width: 40px; height: 40px; }
   .detail-image { margin-top: 30px; }
+}
+
+/* The tool surface is what the activity page is for, so it takes the wide
+   column and the eight rows flow into a grid instead of a tall tower beside
+   empty space. Receipts stay in one narrow chronological column. */
+.activity-layout { grid-template-columns: minmax(0, 1fr) 360px; }
+.tool-list { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0 26px; }
+.tool-list .tool-row { grid-template-columns: 16px minmax(0, 1fr); gap: 10px; }
+.tool-intro { max-width: 72ch; }
+.receipt-panel { min-height: 0; }
+
+@media (max-width: 900px) {
+  .activity-layout { grid-template-columns: 1fr; }
+  .tool-list { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 }
