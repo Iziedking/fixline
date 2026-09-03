@@ -1,0 +1,10 @@
+{
+  "name": "fixline-webmcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "proof": "node scripts/proof.mjs",
+    "serve": "node server.mjs"
+  }
+}

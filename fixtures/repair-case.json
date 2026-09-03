@@ -1,0 +1,49 @@
+{
+  "id": "FIX-2026-001",
+  "title": "Kitchen ceiling leak",
+  "location": "Maple Court / Unit 3B",
+  "startedOn": "2026-08-22",
+  "category": "water",
+  "urgency": "routine",
+  "facts": [
+    {
+      "id": "fact-what",
+      "label": "Issue",
+      "text": "A brown water stain is spreading across the kitchen ceiling near the light fixture.",
+      "occurredOn": "2026-08-22",
+      "source": "fixture"
+    },
+    {
+      "id": "fact-location",
+      "label": "Location",
+      "text": "The stain is in the kitchen, above the counter beside the fridge.",
+      "occurredOn": "2026-08-22",
+      "source": "fixture"
+    },
+    {
+      "id": "fact-contact",
+      "label": "First contact",
+      "text": "I sent a text to the property manager and have not received a reply.",
+      "occurredOn": "2026-08-23",
+      "source": "fixture"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence-photo",
+      "kind": "photo",
+      "label": "Ceiling stain photo",
+      "capturedOn": "2026-08-22",
+      "factIds": ["fact-what", "fact-location"]
+    },
+    {
+      "id": "evidence-message",
+      "kind": "message",
+      "label": "Text to property manager",
+      "capturedOn": "2026-08-23",
+      "factIds": ["fact-contact"]
+    }
+  ],
+  "draft": null,
+  "receipts": []
+}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1422" />
+    <meta name="description" content="Fixline is a renter-owned repair evidence desk for people and their browser agents." />
+    <title>fixline. | Keep the record</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b1422'/%3E%3Cpath d='M18 18h28v28H18z' fill='none' stroke='%23AFC95B' stroke-width='4'/%3E%3Ccircle cx='46' cy='46' r='5' fill='%23AFC95B'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="wordmark" href="./" aria-label="Fixline home">fixline<span>.</span></a>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <a href="/case" data-nav="/case" data-route="/case">Case</a>
+        <a href="/evidence" data-nav="/evidence" data-route="/evidence">Evidence</a>
+        <a href="/draft" data-nav="/draft" data-route="/draft">Draft</a>
+        <a href="/activity" data-nav="/activity" data-route="/activity">Activity</a>
+      </nav>
+      <div class="topbar-meta">
+        <span class="eyebrow">Renter-owned records</span>
+        <span id="capability-badge" class="capability-badge">Checking WebMCP</span>
+      </div>
+    </header>
+    <main id="app" aria-live="polite">
+      <div class="page-shell loading-shell">
+        <div class="skeleton skeleton-kicker"></div>
+        <div class="skeleton skeleton-title"></div>
+        <div class="skeleton-grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+      </div>
+    </main>
+    <noscript><p class="noscript">Fixline needs JavaScript to run its local case desk.</p></noscript>
+    <script>
+      if (window.location.protocol === "file:") {
+        document.querySelector("#app").innerHTML = `
+          <div class="page-shell">
+            <section class="dark-surface file-start-panel" aria-labelledby="file-start-title">
+              <div>
+                <p class="kicker">One small setup step</p>
+                <h1 id="file-start-title">Open Fixline through its local server.</h1>
+                <p class="lede">Chrome blocks the page modules when an app is opened directly from a file. The app is fine. Start the local server, then open the address it gives you.</p>
+                <div class="file-start-actions">
+                  <code>npm run serve</code>
+                  <a class="button primary" href="http://127.0.0.1:4173/">Open the local app</a>
+                </div>
+                <p class="small-note">From the project folder, double-click <span class="mono">start-fixline.cmd</span> for the one-click launcher.</p>
+              </div>
+            </section>
+          </div>`;
+      } else {
+        const appScript = document.createElement("script");
+        appScript.type = "module";
+        appScript.src = "src/app.mjs";
+        document.body.append(appScript);
+      }
+    </script>
+  </body>
+</html>
