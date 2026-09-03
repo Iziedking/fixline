@@ -294,3 +294,8 @@ h1 span { color: var(--accent); }
 /* Receipt states introduced by the approval handshake. */
 .receipt-row.pending .receipt-dot { background: #d29a00; }
 .receipt-row.declined .receipt-dot { background: var(--fail); }
+
+/* Start-a-new-case panel on the case route. */
+.new-case-panel { margin-bottom: 26px; }
+.new-case-note { margin: 14px 0 20px; max-width: 62ch; color: var(--muted-text); font-size: 13px; line-height: 1.55; }
+.new-case-panel .form-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }

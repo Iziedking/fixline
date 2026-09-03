@@ -3,6 +3,7 @@ import {
   availableToolNames,
   createCase,
   dispatchTool,
+  newCase,
   packetFor,
   resolveApproval,
   snapshot,
@@ -104,6 +105,7 @@ let currentCase;
 let webMcpLive = false;
 let lastNotice = null;
 let selectedEvidenceId = null;
+let showNewCase = false;
 let toolActivity = [];
 let pendingResolver = null;
 let pendingTimer = null;
@@ -221,7 +223,31 @@ function routeHeader(eyebrow, title, copy, action = "") { return `<section class
 
 function caseView(view) {
   const locked = view.draft?.status === "approved";
-  return `<div class="page-shell route-shell">${routeHeader("CASE / 001", "Add what happened.", "Record the details while they are fresh. Dates and source links stay beside each fact.", routeLink("/evidence", "View evidence →", "button ghost"))}<div class="content-grid"><article class="record-panel" aria-labelledby="case-heading"><div class="panel-top"><div><span class="eyebrow dark-eyebrow">Active case</span><h2 id="case-heading">${escapeHtml(view.title)}</h2><p class="case-meta">${escapeHtml(view.location)} <span>•</span> started ${escapeHtml(view.startedOn)}</p></div><span class="status ${statusClass(view.urgency)}">${escapeHtml(view.urgency)}</span></div><div class="panel-section"><div class="section-label"><span>Repair facts</span><span class="mono">${view.facts.length} FACTS</span></div><ol class="timeline" aria-label="Repair facts">${view.facts.length ? view.facts.map((fact) => `<li class="timeline-item"><span class="timeline-marker" aria-hidden="true"></span><div><p class="fact-label">${escapeHtml(fact.label)}</p><p class="fact-text">${escapeHtml(fact.text)}</p><time class="fact-date" datetime="${escapeHtml(fact.occurredOn)}">${escapeHtml(fact.occurredOn)} · ${escapeHtml(fact.source)}</time>${factEvidence(view.evidence, fact.id)}</div></li>`).join("") : `<li class="empty-state">No repair facts yet. Add the first one below.</li>`}</ol></div>${locked ? `<div class="panel-section"><div class="empty-state">This record is locked. You approved the packet, so the facts behind it can no longer change.</div></div>` : `<form class="capture-form panel-section" data-form="capture"><div class="section-label"><span>Add a fact</span><span class="mono">YOUR ENTRY</span></div><div class="form-row"><div class="field"><label for="fact-label">Fact type</label><select id="fact-label" name="label"><option>Entry preference</option><option>Update</option><option>Issue</option><option>Location</option><option>First contact</option></select></div><div class="field"><label for="fact-date">Date</label><input id="fact-date" name="occurredOn" type="date" value="2026-08-24" required /></div></div><div class="field"><label for="fact-text">What changed?</label><textarea id="fact-text" name="text" placeholder="Example: Please coordinate entry after 5 p.m. on weekdays." required></textarea></div><button class="button dark-button" type="submit">Add to record <span>→</span></button></form>`}</article>${caseRail(view)}</div></div>`;
+  return `<div class="page-shell route-shell">${routeHeader(`CASE / ${escapeHtml(view.id)}`, "Add what happened.", "Record the details while they are fresh. Dates and source links stay beside each fact.", `<button class="button ghost" data-action="toggle-new-case">${showNewCase ? "Cancel" : "Start a new case"}</button>`)}${newCaseForm()}<div class="content-grid"><article class="record-panel" aria-labelledby="case-heading"><div class="panel-top"><div><span class="eyebrow dark-eyebrow">Active case</span><h2 id="case-heading">${escapeHtml(view.title)}</h2><p class="case-meta">${escapeHtml(view.location)} <span>•</span> started ${escapeHtml(view.startedOn)}</p></div><span class="status ${statusClass(view.urgency)}">${escapeHtml(view.urgency)}</span></div><div class="panel-section"><div class="section-label"><span>Repair facts</span><span class="mono">${view.facts.length} FACTS</span></div><ol class="timeline" aria-label="Repair facts">${view.facts.length ? view.facts.map((fact) => `<li class="timeline-item"><span class="timeline-marker" aria-hidden="true"></span><div><p class="fact-label">${escapeHtml(fact.label)}</p><p class="fact-text">${escapeHtml(fact.text)}</p><time class="fact-date" datetime="${escapeHtml(fact.occurredOn)}">${escapeHtml(fact.occurredOn)} · ${escapeHtml(fact.source)}</time>${factEvidence(view.evidence, fact.id)}</div></li>`).join("") : `<li class="empty-state">No repair facts yet. Add the first one below.</li>`}</ol></div>${locked ? `<div class="panel-section"><div class="empty-state">This record is locked. You approved the packet, so the facts behind it can no longer change.</div></div>` : `<form class="capture-form panel-section" data-form="capture"><div class="section-label"><span>Add a fact</span><span class="mono">YOUR ENTRY</span></div><div class="form-row"><div class="field"><label for="fact-label">Fact type</label><select id="fact-label" name="label"><option>Entry preference</option><option>Update</option><option>Issue</option><option>Location</option><option>First contact</option></select></div><div class="field"><label for="fact-date">Date</label><input id="fact-date" name="occurredOn" type="date" value="2026-08-24" required /></div></div><div class="field"><label for="fact-text">What changed?</label><textarea id="fact-text" name="text" placeholder="Example: Please coordinate entry after 5 p.m. on weekdays." required></textarea></div><button class="button dark-button" type="submit">Add to record <span>→</span></button></form>`}</article>${caseRail(view)}</div></div>`;
+}
+
+/**
+ * An empty case is the smallest surface Fixline ever registers. Letting a
+ * visitor start one is the fastest way to show the gate doing real work on
+ * facts they chose themselves.
+ */
+function newCaseForm() {
+  if (!showNewCase) return "";
+  return `<section class="record-panel new-case-panel" aria-labelledby="new-case-heading">
+    <div class="section-label"><span id="new-case-heading">Start a new case</span><span class="mono">EMPTY RECORD</span></div>
+    <p class="new-case-note">A new case has nothing proved yet, so only three tools get registered: read the case, add a fact, set urgency. Fill the record in and watch the surface grow on the Activity page.</p>
+    <form data-form="new-case">
+      <div class="form-row">
+        <div class="field"><label for="new-title">What is broken?</label><input id="new-title" name="title" placeholder="Bathroom radiator is cold" required /></div>
+        <div class="field"><label for="new-date">Started on</label><input id="new-date" name="startedOn" type="date" value="2026-09-01" required /></div>
+      </div>
+      <div class="field"><label for="new-location">Where do you live?</label><input id="new-location" name="location" placeholder="Elm House / Flat 2" required /></div>
+      <div class="form-actions">
+        <button class="button dark-button" type="submit">Create the case <span>&rarr;</span></button>
+        <button class="button outline-dark" type="button" data-action="load-sample">Load the sample case</button>
+      </div>
+    </form>
+  </section>`;
 }
 
 function caseRail(view) { return `<aside class="support-rail dark-surface"><div class="rail-top"><span class="eyebrow">Case status</span><span class="mono">LOCAL</span></div><div class="rail-number">${view.readiness.complete}<span>/${view.readiness.total}</span></div><p class="rail-title">${escapeHtml(view.readiness.label)}</p><ul class="mini-checks">${view.readiness.checks.map((check) => `<li class="${check.complete ? "complete" : ""}"><span>${check.complete ? "✓" : "·"}</span>${escapeHtml(check.label)}</li>`).join("")}</ul><div class="rail-divider"></div><p class="rail-label">What this unlocks</p><p class="rail-copy">${view.readiness.ready ? "Every check passed, so the drafting tool is now registered for the agent." : "Until every check passes, the drafting tool is not registered and no agent can call it."}</p>${routeLink("/activity", "See the tool surface →", "rail-link")}</aside>`; }
@@ -389,9 +415,25 @@ async function initWebMcp() {
 
 /* ---------- human actions ---------- */
 
+function startNewCase(input) {
+  try {
+    currentCase = newCase(input, now());
+    showNewCase = false;
+    selectedEvidenceId = null;
+    settleDecision({ decision: "cancelled", message: "The renter started a different case." });
+    setNotice(currentCase.receipts[currentCase.receipts.length - 1]);
+    render();
+    void syncToolSurface();
+  } catch (error) {
+    setNotice({ action: "new_case", result: "error", at: now(), detail: error instanceof Error ? error.message : "The case could not be created." });
+    render();
+  }
+}
+
 function resetCase() {
   currentCase = createCase(seedCase);
   lastNotice = null;
+  showNewCase = false;
   selectedEvidenceId = null;
   settleDecision({ decision: "cancelled", message: "The renter reset the case." });
   render();
@@ -465,6 +507,9 @@ function bindEvents() {
   document.querySelectorAll("[data-route]").forEach((link) => link.addEventListener("click", (event) => { event.preventDefault(); navigate(link.dataset.route); }));
   document.querySelector("[data-action=demo]")?.addEventListener("click", runDemo);
   document.querySelector("[data-action=reset]")?.addEventListener("click", resetCase);
+  document.querySelector("[data-action=toggle-new-case]")?.addEventListener("click", () => { showNewCase = !showNewCase; render(); });
+  document.querySelector("[data-action=load-sample]")?.addEventListener("click", () => { showNewCase = false; resetCase(); });
+  document.querySelector("[data-form=new-case]")?.addEventListener("submit", (event) => { event.preventDefault(); const form = new FormData(event.currentTarget); startNewCase({ title: form.get("title"), location: form.get("location"), startedOn: form.get("startedOn") }); });
   document.querySelector("[data-action=compose]")?.addEventListener("click", () => runTool("compose_request"));
   document.querySelector("[data-action=approve]")?.addEventListener("click", approveHuman);
   document.querySelector("[data-action=decide-approve]")?.addEventListener("click", () => decide("approved"));

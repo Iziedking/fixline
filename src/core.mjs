@@ -148,6 +148,34 @@ export function availableToolNames(caseData) {
   return Object.keys(availability).filter((name) => availability[name].available);
 }
 
+/**
+ * Starts an empty case the renter defines themselves.
+ *
+ * An empty record exposes the smallest surface Fixline ever registers: read the
+ * case, add a fact, set urgency. There is no evidence to read, nothing to draft,
+ * and nothing to approve, so those tools do not exist yet.
+ */
+export function newCase(input, now) {
+  const title = assertString(input?.title, "title", 120);
+  const location = assertString(input?.location, "location", 120);
+  const startedOn = assertDate(input?.startedOn, "startedOn");
+  const stamp = String(now).replace(/[^0-9]/g, "").slice(0, 14);
+  const created = assertCase({
+    id: `FIX-${stamp}`,
+    title,
+    location,
+    startedOn,
+    category: "unspecified",
+    urgency: "routine",
+    facts: [],
+    evidence: [],
+    draft: null,
+    pendingApproval: null,
+    receipts: []
+  });
+  return withReceipt(created, makeReceipt("new_case", "ok", `Started a new case: ${title}`, now));
+}
+
 export function createCase(caseData) {
   return assertCase(caseData);
 }

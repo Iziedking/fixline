@@ -14,7 +14,8 @@ The proof script measures this:
 
 | Case state | Tools registered |
 | --- | ---: |
-| Fresh case, proof checks open | 4 |
+| New empty case you started | 3 |
+| Seeded sample case, proof checks open | 4 |
 | Record complete | 5 |
 | Draft composed | 6 |
 | Waiting on your decision | 2 |
@@ -50,7 +51,7 @@ Registered on `document.modelContext` when the browser exposes it. `toolAvailabi
 4. You press Approve or Decline.
 5. Your decision goes back to the agent as the tool result, and the surface re-registers.
 
-Declining does something real. The draft stays unapproved, export stays unregistered, and the record reopens for edits. If nobody answers in three minutes the call resolves as `no_response` instead of hanging, and if the agent aborts the call the pending decision is withdrawn.
+Declining does something real. The draft stays unapproved, export stays unregistered, and the record reopens for edits. The spec does not define whether `execute()` may stay pending while waiting on a person, so the park is capped at 45 seconds to stay under a typical client timeout. If it expires the call returns `no_response`, the decision card stays on screen, and the agent is told to poll `get_case_snapshot` for the outcome rather than ask again. If the agent aborts the call, the pending decision is withdrawn.
 
 ## Run it
 
@@ -60,6 +61,8 @@ Node.js 22 or newer. No dependencies.
 npm run proof   # deterministic proof of the state machine
 npm run serve   # static server on http://127.0.0.1:4173
 ```
+
+The site opens on a seeded sample case. "Start a new case" on `/case` gives you an empty record with your own address and issue, which is the smallest surface Fixline registers: read the case, add a fact, set urgency. Nothing to read, draft, or approve yet.
 
 Open `http://127.0.0.1:4173` in Chrome with WebMCP enabled, or in the ChatGPT in-app browser. Opening `index.html` directly will not work, because Chrome blocks module scripts on `file://`.
 
@@ -71,7 +74,8 @@ If the browser has no WebMCP, the page labels itself Preview mode and runs the s
 
 `npm run proof` replays the core against `fixtures/repair-case.json` and asserts the claims above:
 
-- the opening surface withholds drafting, approval, and export
+- an empty case registers three tools, with no evidence read and no drafting
+- the seeded case withholds drafting, approval, and export
 - composing an incomplete record is gated, and the gate names the missing check
 - completing the record registers drafting, while drafting alone does not register export
 - no approval tool is ever exposed to the agent
@@ -101,7 +105,7 @@ Static site, no build step, no runtime dependencies. It deploys to any static ho
 
 ## What this does not do
 
-- The case is fixture-seeded sample data kept in this browser's `localStorage`. There is no server, account, or database.
+- Cases live in this browser's `localStorage`, seeded from a sample fixture. There is no server, account, or database, and nothing syncs between devices.
 - No photo bytes are uploaded or analyzed. Evidence records are metadata.
 - The draft is not legal advice and does not establish that anything you entered is true.
 - There is no diagnosis and no emergency triage.

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import {
   availableToolNames,
   createCase,
+  newCase,
   dispatchTool,
   packetFor,
   resolveApproval,
@@ -43,6 +44,14 @@ function step(name, input, time) {
   steps.push({ name, receipt: caseData.receipts.at(-1) || null });
   return outcome.result;
 }
+
+/* 0. An empty case a renter starts themselves exposes the smallest surface. */
+const blank = newCase({ title: "Bathroom radiator cold", location: "Elm House / Flat 2", startedOn: "2026-09-01" }, at(0));
+const blankTools = availableToolNames(blank);
+assert(blankTools.length === 3, "an empty case registers only three tools");
+assert(!blankTools.includes("get_evidence_item"), "no evidence tool without evidence records");
+assert(!blankTools.includes("compose_request"), "an empty record cannot be drafted");
+surfaces.push({ label: "new empty case", tools: blankTools });
 
 /* 1. The opening surface withholds everything the record is not ready for. */
 const opening = recordSurface("initial");
