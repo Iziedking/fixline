@@ -12,7 +12,9 @@ import {
 const app = document.querySelector("#app");
 const badge = document.querySelector("#capability-badge");
 const STORAGE_KEY = "fixline.case.v2";
-const APPROVAL_TIMEOUT_MS = 180000;
+// Kept under a typical agent-client tool timeout. If the park is cut short, the
+// decision card stays up and the agent can poll get_case_snapshot for the result.
+const APPROVAL_TIMEOUT_MS = 45000;
 
 /**
  * One definition per tool. `available` is decided by the core state machine, so
@@ -24,7 +26,7 @@ const TOOL_DEFS = [
     name: "get_case_snapshot",
     title: "Read repair case",
     summary: "Read the case, the proof gaps, and which tools are live right now.",
-    description: "Read the active renter repair case: facts, evidence ids, proof-check gaps, draft status, and the list of tools currently available in this page state.",
+    description: "Read the active renter repair case: facts, evidence ids, proof-check gaps, draft status, and the list of tools currently available in this page state. The available tool list changes as the case progresses, so call this first and again after any change to see which tools have unlocked.",
     inputSchema: { type: "object", properties: {} },
     annotations: { readOnlyHint: true, untrustedContentHint: true }
   },
@@ -80,7 +82,7 @@ const TOOL_DEFS = [
     name: "request_human_approval",
     title: "Ask the renter to decide",
     summary: "Hand the draft to the renter and wait for a real decision.",
-    description: "Put the draft in front of the renter and wait. This call does not return until the renter presses Approve or Decline in the page. You cannot approve on their behalf and there is no tool that lets you.",
+    description: "Put the draft in front of the renter and wait for their decision. This call stays open until they press Approve or Decline in the page. If it returns decision \"no_response\", the renter has not answered yet and the card is still on screen: poll get_case_snapshot to see draftStatus change, and do not ask again. You cannot approve on their behalf and there is no tool that lets you.",
     inputSchema: {
       type: "object",
       properties: { note: { type: "string", description: "One short line telling the renter what you changed and what you are asking them to confirm." } }
@@ -283,7 +285,7 @@ function awaitHumanDecision(signal) {
     pendingTimer = setTimeout(() => {
       settleDecision({
         decision: "no_response",
-        message: "The renter did not respond in time. The draft is unchanged and still needs a decision."
+        message: "The renter has not answered yet. The decision card is still on screen and the draft is unchanged. Poll get_case_snapshot to see whether draftStatus becomes approved. Do not ask again."
       });
     }, APPROVAL_TIMEOUT_MS);
     signal?.addEventListener("abort", () => {
