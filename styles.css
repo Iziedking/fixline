@@ -252,6 +252,7 @@ h1 span { color: var(--accent); }
   .route-header { margin-bottom: 35px; }
   .route-header h1 { font-size: clamp(43px, 14vw, 64px); }
   .panel-top, .panel-section, .draft-copy, .draft-empty, .approval-row, .receipt-region { padding-right: 20px; padding-left: 20px; }
+  .new-case-panel { padding: 20px; }
   .panel-top { flex-direction: column; }
   .form-row { grid-template-columns: 1fr; }
   .approval-row { align-items: stretch; flex-direction: column; }
@@ -295,10 +296,13 @@ h1 span { color: var(--accent); }
 .receipt-row.pending .receipt-dot { background: #d29a00; }
 .receipt-row.declined .receipt-dot { background: var(--fail); }
 
-/* Start-a-new-case panel on the case route. */
-.new-case-panel { margin-bottom: 26px; }
+/* Panels that stand alone rather than wrapping their content in .panel-section
+   carry their own padding, matching the 28px every other panel gets. */
+.new-case-panel { margin-bottom: 26px; padding: 28px; }
+.new-case-panel > form { display: grid; gap: 14px; }
 .new-case-note { margin: 14px 0 20px; max-width: 62ch; color: var(--muted-text); font-size: 13px; line-height: 1.55; }
 .new-case-panel .form-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+.new-case-panel .section-label { margin-bottom: 0; }
 
 /* Evidence records carry a real thumbnail once the renter attaches one. */
 .evidence-list-item { grid-template-columns: 46px minmax(0, 1fr) 16px; align-items: center; }
